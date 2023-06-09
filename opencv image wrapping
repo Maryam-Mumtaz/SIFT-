@@ -1,0 +1,77 @@
+import sys
+if 'google.colab' in sys.modules:
+    import subprocess
+    subprocess.call("pip install -U opencv-python".split())
+    subprocess.call("wget https://raw.githubusercontent.com/YoniChechik/AI_is_Math/master/c_08_features/left.jpg".split())
+    subprocess.call("wget https://raw.githubusercontent.com/YoniChechik/AI_is_Math/master/c_08_features/right.jpg".split())
+
+from random import randrange
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+
+figsize = (10, 10)
+
+# Read the left and right images
+rgb_l = cv2.cvtColor(cv2.imread("left.jpg"), cv2.COLOR_BGR2RGB)
+gray_l = cv2.cvtColor(rgb_l, cv2.COLOR_RGB2GRAY)
+rgb_r = cv2.cvtColor(cv2.imread("right.jpg"), cv2.COLOR_BGR2RGB)
+gray_r = cv2.cvtColor(rgb_r, cv2.COLOR_RGB2GRAY)
+
+# Use SIFT as the feature extractor
+feature_extractor = cv2.SIFT_create()
+
+# Find keypoints and descriptors in the left and right images
+kp_l, desc_l = feature_extractor.detectAndCompute(gray_l, None)
+kp_r, desc_r = feature_extractor.detectAndCompute(gray_r, None)
+
+# Visualize keypoints in the left image
+test = cv2.drawKeypoints(rgb_l, kp_l, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+plt.figure(figsize=figsize)
+plt.imshow(test)
+plt.title("Keypoints")
+plt.show()
+
+# Match keypoints using Brute-Force matcher
+bf = cv2.BFMatcher()
+matches = bf.knnMatch(desc_l, desc_r, k=2)
+
+# Apply ratio test to get good matches
+good_and_second_good_match_list = []
+for m in matches:
+    if m[0].distance / m[1].distance < 0.5:
+        good_and_second_good_match_list.append(m)
+good_match_arr = np.asarray(good_and_second_good_match_list)[:, 0]
+
+# Show only 30 matches
+im_matches = cv2.drawMatchesKnn(rgb_l, kp_l, rgb_r, kp_r,
+                                good_and_second_good_match_list[0:30], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+plt.figure(figsize=(20, 20))
+plt.imshow(im_matches)
+plt.title("Keypoint Matches")
+plt.show()
+
+# Extract matched keypoints
+good_kp_l = np.array([kp_l[m.queryIdx].pt for m in good_match_arr])
+good_kp_r = np.array([kp_r[m.trainIdx].pt for m in good_match_arr])
+
+# Find the homography matrix using RANSAC
+H, masked = cv2.findHomography(good_kp_r, good_kp_l, cv2.RANSAC, 5.0)
+
+print(H)
+
+# Warp the right image to align with the left image
+rgb_r_warped = cv2.warpPerspective(rgb_r, H, (rgb_l.shape[1] + rgb_r.shape[1], rgb_l.shape[0]))
+rgb_r_warped[0:rgb_l.shape[0], 0:rgb_l.shape[1]] = rgb_l
+
+plt.figure(figsize=figsize)
+plt.imshow(rgb_r_warped)
+plt.title("Naive Warping")
+plt.show()
+
+def warpTwoImages(img1, img2, H):
+    '''Warp img2 to img1 with homography H
+    From: https://stackoverflow.com/questions/13063201/how-to-show-the-whole-image-when-using-opencv-warpperspective
+    '''
+   
